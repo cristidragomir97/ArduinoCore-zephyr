@@ -334,6 +334,23 @@
 };
 
 
+&quadspi {
+	pinctrl-0 = <&quadspi_clk_pf10 &quadspi_bk1_ncs_pg6
+		&quadspi_bk1_io0_pd11 &quadspi_bk1_io1_pd12
+		&quadspi_bk1_io2_pe2 &quadspi_bk1_io3_pf6>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	qspi_flash: qspi-nor-flash@0 {
+		compatible = "st,stm32-qspi-nor";
+		reg = <0>;
+		size = <DT_SIZE_M(128)>; /* 128 Mbits (16 MB) */
+		qspi-max-frequency = <72000000>;
+		spi-bus-width = <4>;
+		status = "okay";
+	};
+};
+
 &flash0 {
 	partitions {
 		/delete-node/ slot0_partition;
