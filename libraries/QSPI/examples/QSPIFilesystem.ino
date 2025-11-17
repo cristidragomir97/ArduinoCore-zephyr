@@ -1,7 +1,7 @@
 /*
-  QSPI Filesystem Example
+  QSPI Filesystem Example with LittleFS
 
-  This example demonstrates how to use the QSPI library with LittleFS
+  This example demonstrates how to use the QSPI library with Zephyr's LittleFS
   filesystem to store and retrieve files on external QSPI flash memory.
 
   Features:
@@ -10,14 +10,33 @@
   - List directory contents
   - Check filesystem statistics
 
+  IMPORTANT CONFIGURATION REQUIRED:
+  ===================================
+  This example requires LittleFS support to be enabled in your Zephyr build.
+
+  1. Add to your board's prj.conf file:
+     CONFIG_FILE_SYSTEM=y
+     CONFIG_FILE_SYSTEM_LITTLEFS=y
+     CONFIG_FILE_SYSTEM_MAX_FILE_NAME=128
+
+  2. If using a custom board, ensure your device tree has flash partitions defined.
+
+  3. Alternative: If you don't want to configure LittleFS, use the QSPISimpleFS.ino
+     example instead, which implements a simple filesystem without dependencies.
+
   Note:
   - QSPI flash must be configured in the board's device tree overlay
-  - Zephyr CONFIG_FILE_SYSTEM=y and CONFIG_FILE_SYSTEM_LITTLEFS=y must be enabled
-  - Add to prj.conf:
-      CONFIG_FILE_SYSTEM=y
-      CONFIG_FILE_SYSTEM_LITTLEFS=y
-      CONFIG_FILE_SYSTEM_MAX_FILE_NAME=128
+  - Build will fail if LittleFS is not enabled (missing lfs.h header)
 */
+
+// Check if filesystem support is available
+#ifndef CONFIG_FILE_SYSTEM
+#error "This example requires CONFIG_FILE_SYSTEM=y in prj.conf"
+#endif
+
+#ifndef CONFIG_FILE_SYSTEM_LITTLEFS
+#error "This example requires CONFIG_FILE_SYSTEM_LITTLEFS=y in prj.conf. Use QSPISimpleFS.ino if you don't want to enable LittleFS."
+#endif
 
 #include <QSPI.h>
 #include <zephyr/fs/fs.h>
