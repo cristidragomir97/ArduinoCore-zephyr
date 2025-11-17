@@ -38,6 +38,9 @@ public:
     // Utility functions
     bool isValidAddress(uint32_t address, size_t size = 1);
 
+    // Get the underlying Zephyr device (for filesystem/advanced usage)
+    const struct device* getDevice();
+
     // End/deinitialize
     void end();
 
