@@ -6,7 +6,7 @@
 #define QSPI_FLASH_DEVICE DEVICE_DT_GET(QSPI_FLASH_NODE)
 #else
 #define QSPI_FLASH_DEVICE NULL
-#warning "QSPI flash device not found in device tree"
+#warning "No QSPI flash available on this board"
 #endif
 
 QSPIClass::QSPIClass() : flash_dev(nullptr), initialized(false) {
@@ -117,6 +117,10 @@ bool QSPIClass::isValidAddress(uint32_t address, size_t size) {
 
     size_t flash_size = getFlashSize();
     return (address + size <= flash_size);
+}
+
+const struct device* QSPIClass::getDevice() {
+    return flash_dev;
 }
 
 void QSPIClass::end() {
