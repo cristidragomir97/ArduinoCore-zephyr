@@ -8,6 +8,7 @@
 #define ARDUINO_STORAGE_FOLDER_H
 
 #include <Arduino.h>
+#include <cstring>
 #include <vector>
 #include "StorageCommon.h"
 #include "StorageError.h"
@@ -22,10 +23,25 @@
  */
 class Folder {
 public:
-    Folder();
-    Folder(const char* path);
-    Folder(const String& path);
-    virtual ~Folder();
+    Folder() {
+        path_[0] = '\0';
+    }
+
+    Folder(const char* path) {
+        if (path != nullptr) {
+            strncpy(path_, path, sizeof(path_) - 1);
+            path_[sizeof(path_) - 1] = '\0';
+        } else {
+            path_[0] = '\0';
+        }
+    }
+
+    Folder(const String& path) {
+        strncpy(path_, path.c_str(), sizeof(path_) - 1);
+        path_[sizeof(path_) - 1] = '\0';
+    }
+
+    virtual ~Folder() {}
 
     // Directory Management
     virtual bool exists(StorageError* error = nullptr) const = 0;
@@ -39,15 +55,35 @@ public:
     virtual size_t getFolderCount(StorageError* error = nullptr) = 0;
 
     // Path Information
-    virtual const char* getPath() const;
-    virtual String getPathAsString() const;
-    virtual String getFolderName() const;
+    virtual const char* getPath() const {
+        return path_;
+    }
+
+    virtual String getPathAsString() const {
+        return String(path_);
+    }
+
+    virtual String getFolderName() const {
+        const char* lastSep = strrchr(path_, '/');
+        if (lastSep != nullptr && *(lastSep + 1) != '\0') {
+            return String(lastSep + 1);
+        }
+        // Handle root path or trailing slash
+        if (path_[0] == '/' && path_[1] == '\0') {
+            return String("/");
+        }
+        return String(path_);
+    }
 
 protected:
     char path_[STORAGE_MAX_PATH_LENGTH];
 
     // Helper to set error if pointer is not null
-    static void setErrorIfNotNull(StorageError* error, StorageErrorCode code, const char* message = nullptr);
+    static void setErrorIfNotNull(StorageError* error, StorageErrorCode code, const char* message = nullptr) {
+        if (error != nullptr) {
+            error->setError(code, message);
+        }
+    }
 };
 
 #endif // ARDUINO_STORAGE_FOLDER_H

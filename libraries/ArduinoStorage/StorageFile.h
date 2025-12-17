@@ -8,6 +8,7 @@
 #define ARDUINO_STORAGE_FILE_H
 
 #include <Arduino.h>
+#include <cstring>
 #include "StorageCommon.h"
 #include "StorageError.h"
 
@@ -23,10 +24,25 @@ class Folder;
  */
 class File {
 public:
-    File();
-    File(const char* path);
-    File(const String& path);
-    virtual ~File();
+    File() {
+        path_[0] = '\0';
+    }
+
+    File(const char* path) {
+        if (path != nullptr) {
+            strncpy(path_, path, sizeof(path_) - 1);
+            path_[sizeof(path_) - 1] = '\0';
+        } else {
+            path_[0] = '\0';
+        }
+    }
+
+    File(const String& path) {
+        strncpy(path_, path.c_str(), sizeof(path_) - 1);
+        path_[sizeof(path_) - 1] = '\0';
+    }
+
+    virtual ~File() {}
 
     // Opening and Closing
     virtual bool open(const char* filename, FileMode mode, StorageError* error = nullptr) = 0;
@@ -58,15 +74,31 @@ public:
     virtual bool rename(const String& newFilename, StorageError* error = nullptr) = 0;
 
     // Path Information
-    virtual const char* getPath() const;
-    virtual String getPathAsString() const;
-    virtual String getFilename() const;
+    virtual const char* getPath() const {
+        return path_;
+    }
+
+    virtual String getPathAsString() const {
+        return String(path_);
+    }
+
+    virtual String getFilename() const {
+        const char* lastSep = strrchr(path_, '/');
+        if (lastSep != nullptr) {
+            return String(lastSep + 1);
+        }
+        return String(path_);
+    }
 
 protected:
     char path_[STORAGE_MAX_PATH_LENGTH];
 
     // Helper to set error if pointer is not null
-    static void setErrorIfNotNull(StorageError* error, StorageErrorCode code, const char* message = nullptr);
+    static void setErrorIfNotNull(StorageError* error, StorageErrorCode code, const char* message = nullptr) {
+        if (error != nullptr) {
+            error->setError(code, message);
+        }
+    }
 };
 
 #endif // ARDUINO_STORAGE_FILE_H
