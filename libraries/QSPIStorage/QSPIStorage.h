@@ -9,6 +9,7 @@
 
 #include <Arduino.h>
 #include <ArduinoStorage.h>
+#include "QSPIFolder.h"
 
 /**
  * @brief QSPI Storage manager class
@@ -16,7 +17,7 @@
  * Provides high-level access to QSPI flash storage with LittleFS filesystem.
  *
  * IMPORTANT: This library requires LittleFS to be auto-mounted via devicetree FSTAB.
- * Your board's devicetree must include an FSTAB entry that mounts LittleFS at "/qspi".
+ * Your board's devicetree must include an FSTAB entry that mounts LittleFS at "/storage".
  */
 class QSPIStorage {
 public:
@@ -44,9 +45,9 @@ public:
 
     /**
      * Get the mount point path
-     * @return Mount point string "/qspi"
+     * @return Mount point string "/storage"
      */
-    const char* getMountPoint() const { return "/qspi"; }
+    const char* getMountPoint() const { return "/storage"; }
 
     /**
      * Get storage statistics
@@ -57,6 +58,13 @@ public:
      * @return true if successful
      */
     bool getStorageInfo(size_t& total, size_t& used, size_t& available, StorageError* error = nullptr);
+
+    /**
+     * Get the root folder of the storage
+     * @param error Optional error output parameter
+     * @return QSPIFolder representing the root directory
+     */
+    QSPIFolder getRootFolder(StorageError* error = nullptr);
 
     /**
      * Format is not supported with FSTAB mounting

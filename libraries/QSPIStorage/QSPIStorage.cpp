@@ -16,7 +16,7 @@ bool QSPIStorage::begin(StorageError* error) {
 
     // Check if the filesystem is already mounted (via devicetree FSTAB auto-mount)
     struct fs_statvfs stat;
-    int ret = fs_statvfs("/qspi", &stat);
+    int ret = fs_statvfs("/storage", &stat);
 
     if (ret == 0) {
         mounted_ = true;
@@ -44,7 +44,7 @@ bool QSPIStorage::getStorageInfo(size_t& total, size_t& used, size_t& available,
     }
 
     struct fs_statvfs stat;
-    int ret = fs_statvfs("/qspi", &stat);
+    int ret = fs_statvfs("/storage", &stat);
     if (ret != 0) {
         if (error) {
             error->setError(StorageErrorCode::READ_ERROR, "Failed to get storage info");
@@ -57,4 +57,14 @@ bool QSPIStorage::getStorageInfo(size_t& total, size_t& used, size_t& available,
     used = total - available;
 
     return true;
+}
+
+QSPIFolder QSPIStorage::getRootFolder(StorageError* error) {
+    if (!mounted_) {
+        if (error) {
+            error->setError(StorageErrorCode::STORAGE_NOT_MOUNTED, "Storage not mounted");
+        }
+        return QSPIFolder();
+    }
+    return QSPIFolder("/storage");
 }

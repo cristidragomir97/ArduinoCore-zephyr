@@ -38,9 +38,9 @@ struct DeviceConfig {
 };
 
 // Constants
-const char* CONFIG_FILE = "/qspi/config.bin";
-const char* DATA_DIR = "/qspi/data";
-const char* LOG_DIR = "/qspi/logs";
+const char* CONFIG_FILE = "/storage/config.bin";
+const char* DATA_DIR = "/storage/data";
+const char* LOG_DIR = "/storage/logs";
 const uint32_t MAX_LOG_SIZE = 4096;  // Rotate logs at 4KB
 
 void setup() {
@@ -259,7 +259,7 @@ void demoBinaryDataStorage() {
     }
 
     // Write binary data
-    QSPIFile dataFile("/qspi/data/readings.bin");
+    QSPIFile dataFile("/storage/data/readings.bin");
 
     if (dataFile.open(FileMode::WRITE, &error)) {
         // Write header (number of readings)
@@ -322,7 +322,7 @@ void demoDataLogging() {
     }
 
     // Show log content
-    QSPIFile logFile("/qspi/logs/app.log");
+    QSPIFile logFile("/storage/logs/app.log");
     if (logFile.open(FileMode::READ, &error)) {
         Serial.println("Current log content:");
         Serial.println("---");

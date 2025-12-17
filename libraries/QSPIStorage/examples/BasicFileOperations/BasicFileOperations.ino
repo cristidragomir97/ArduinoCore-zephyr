@@ -10,7 +10,7 @@
   Your board's devicetree must include:
 
   1. A storage partition on the QSPI flash
-  2. An FSTAB entry that mounts LittleFS at "/qspi"
+  2. An FSTAB entry that mounts LittleFS at "/storage"
 
   If you see "Filesystem not mounted" error, the board's devicetree
   needs to be configured for auto-mounting.
@@ -85,7 +85,7 @@ void demoWriteFile() {
     Serial.println("--- Demo: Writing a File ---");
 
     StorageError error;
-    QSPIFile file("/qspi/hello.txt");
+    QSPIFile file("/storage/hello.txt");
 
     if (file.open(FileMode::WRITE, &error)) {
         String content = "Hello from QSPIStorage!\n";
@@ -116,7 +116,7 @@ void demoReadFile() {
     Serial.println("--- Demo: Reading a File ---");
 
     StorageError error;
-    QSPIFile file("/qspi/hello.txt");
+    QSPIFile file("/storage/hello.txt");
 
     if (file.open(FileMode::READ, &error)) {
         String content = file.readAsString(&error);
@@ -152,7 +152,7 @@ void demoListFiles() {
     }
 
     // List files in root
-    Serial.println("Files in /qspi:");
+    Serial.println("Files in /storage:");
     std::vector<QSPIFile> files = root.getFiles(&error);
 
     if (files.empty()) {
@@ -168,7 +168,7 @@ void demoListFiles() {
     }
 
     // List folders
-    Serial.println("\nFolders in /qspi:");
+    Serial.println("\nFolders in /storage:");
     std::vector<QSPIFolder> folders = root.getFolders(&error);
 
     if (folders.empty()) {
@@ -189,7 +189,7 @@ void demoDeleteFile() {
     StorageError error;
 
     // Create a temp file
-    QSPIFile tempFile("/qspi/temp.txt");
+    QSPIFile tempFile("/storage/temp.txt");
     if (tempFile.open(FileMode::WRITE, &error)) {
         tempFile.write("Temporary file", &error);
         tempFile.close(&error);
