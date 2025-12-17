@@ -27,8 +27,6 @@
 	status = "okay";
 };
 
-qspi_flash: &n25q128a1 {};
-
 &i2c4 {
 	status = "okay";
 	gc2145: gc2145@3c {
@@ -334,7 +332,6 @@ qspi_flash: &n25q128a1 {};
 		status = "okay";
 	};
 };
-
 
 
 &flash0 {

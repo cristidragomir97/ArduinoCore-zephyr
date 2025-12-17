@@ -1,58 +1,28 @@
 /*
   QSPI Filesystem Example with LittleFS
 
-  This example demonstrates how to use the QSPI library with Zephyr's LittleFS
-  filesystem to store and retrieve files on external QSPI flash memory.
+  This example demonstrates how to use Zephyr's LittleFS filesystem
+  to store and retrieve files on external QSPI flash memory.
 
   Features:
-  - Mount LittleFS on QSPI flash
-  - Create, write, and read files
+  - Create, write, and read files on the auto-mounted /storage partition
   - List directory contents
   - Check filesystem statistics
 
-  IMPORTANT CONFIGURATION REQUIRED:
-  ===================================
-  This example requires LittleFS support to be enabled in your Zephyr build.
-
-  1. Add to your board's prj.conf file:
-     CONFIG_FILE_SYSTEM=y
-     CONFIG_FILE_SYSTEM_LITTLEFS=y
-     CONFIG_FILE_SYSTEM_MAX_FILE_NAME=128
-
-  2. If using a custom board, ensure your device tree has flash partitions defined.
-
-  3. Alternative: If you don't want to configure LittleFS, use the QSPISimpleFS.ino
-     example instead, which implements a simple filesystem without dependencies.
+  The filesystem is automatically mounted at boot via device tree FSTAB.
+  No manual mounting is required - just use files at /storage/filename.
 
   Note:
-  - QSPI flash must be configured in the board's device tree overlay
-  - Build will fail if LittleFS is not enabled (missing lfs.h header)
+  - QSPI flash partitions are defined in the board's device tree overlay
+  - The /storage partition uses LittleFS (7MB user data)
+  - The /wlan: and /ota: partitions use FAT
 */
 
-// Check if filesystem support is available
-#ifndef CONFIG_FILE_SYSTEM
-#error "This example requires CONFIG_FILE_SYSTEM=y in prj.conf"
-#endif
-
-#ifndef CONFIG_FILE_SYSTEM_LITTLEFS
-#error "This example requires CONFIG_FILE_SYSTEM_LITTLEFS=y in prj.conf. Use QSPISimpleFS.ino if you don't want to enable LittleFS."
-#endif
-
-#include <QSPI.h>
+#include <Arduino.h>
 #include <zephyr/fs/fs.h>
-#include <zephyr/fs/littlefs.h>
-#include <zephyr/storage/flash_map.h>
 
-// Mount point for the filesystem
-#define MOUNT_POINT "/qspi"
-
-// LittleFS configuration
-FS_LITTLEFS_DECLARE_DEFAULT_CONFIG(storage);
-static struct fs_mount_t mp = {
-    .type = FS_LITTLEFS,
-    .fs_data = &storage,
-    .mnt_point = MOUNT_POINT,
-};
+// Mount point for the LittleFS user data partition (auto-mounted via FSTAB)
+#define MOUNT_POINT "/storage"
 
 void setup() {
   Serial.begin(115200);
@@ -63,33 +33,19 @@ void setup() {
   Serial.println("QSPI Filesystem Example");
   Serial.println("========================\n");
 
-  // Initialize QSPI flash
-  if (!QSPI.begin()) {
-    Serial.println("Failed to initialize QSPI flash!");
-    while (1) {
-      delay(1000);
-    }
-  }
-
-  Serial.println("QSPI flash initialized successfully");
-  Serial.print("Flash size: ");
-  Serial.print(QSPI.getFlashSize() / 1024);
-  Serial.println(" KB\n");
-
-  // Mount the filesystem
-  Serial.print("Mounting LittleFS at " MOUNT_POINT "... ");
-  int ret = fs_mount(&mp);
+  // Check if filesystem is mounted (should be auto-mounted via FSTAB)
+  struct fs_statvfs stats;
+  int ret = fs_statvfs(MOUNT_POINT, &stats);
 
   if (ret == 0) {
-    Serial.println("OK");
-  } else if (ret == -EBUSY) {
-    Serial.println("Already mounted");
+    Serial.println("Filesystem is mounted at " MOUNT_POINT);
   } else {
-    Serial.print("FAILED (");
+    Serial.print("Filesystem not available (error: ");
     Serial.print(ret);
     Serial.println(")");
-    Serial.println("Note: First mount may fail - filesystem might need formatting");
-    Serial.println("Try erasing the flash first or format the filesystem");
+    Serial.println("Note: The filesystem should be auto-mounted via FSTAB.");
+    Serial.println("You may need to format the partition first using the");
+    Serial.println("FlashFormat example from the Storage library.");
     while (1) {
       delay(1000);
     }
@@ -103,6 +59,9 @@ void setup() {
 
   // List files
   listFiles();
+
+  // List all mounted filesystems
+  listMounts();
 }
 
 void loop() {
@@ -173,7 +132,7 @@ void testFileOperations() {
   ssize_t written = fs_write(&file, data, strlen(data));
   fs_close(&file);
 
-  if (written == strlen(data)) {
+  if (written == (ssize_t)strlen(data)) {
     Serial.print("OK (");
     Serial.print(written);
     Serial.println(" bytes)");
@@ -284,4 +243,41 @@ void listFiles() {
 
   Serial.print("\nTotal items: ");
   Serial.println(count);
+}
+
+void listMounts() {
+  Serial.println("\n=== Mounted Filesystems ===");
+
+  const char *mnt_point;
+  int idx = 0;
+  int res;
+  bool found = false;
+
+  while (true) {
+    res = fs_readmount(&idx, &mnt_point);
+    if (res < 0) {
+      break;
+    }
+
+    Serial.print("Mount point ");
+    Serial.print(idx - 1);
+    Serial.print(": ");
+    Serial.print(mnt_point);
+
+    // Detect filesystem type by mount point naming convention
+    // FAT mount points typically end with ':', LittleFS mount points don't
+    size_t len = strlen(mnt_point);
+    if (len > 0 && mnt_point[len - 1] == ':') {
+      Serial.print(" (FAT)");
+    } else {
+      Serial.print(" (LittleFS)");
+    }
+    Serial.println();
+
+    found = true;
+  }
+
+  if (!found) {
+    Serial.println("No mounted filesystems found!");
+  }
 }

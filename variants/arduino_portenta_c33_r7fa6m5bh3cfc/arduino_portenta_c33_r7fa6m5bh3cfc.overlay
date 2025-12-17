@@ -5,8 +5,6 @@
 	};
 };
 
-qspi_flash: &at25sf128a {};
-
 &flash0 {
 	partitions {
 		mcuboot: partition@0 {

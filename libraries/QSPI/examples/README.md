@@ -21,9 +21,9 @@ Basic example showing fundamental QSPI operations:
 
 ### 2. QSPISimpleFS.ino
 **Difficulty:** Intermediate
-**Dependencies:** None
+**Dependencies:** None (class implementation included in sketch)
 
-A self-contained simple filesystem implementation that works directly on QSPI flash without requiring external filesystem libraries.
+Demonstrates a simple filesystem for file storage on QSPI flash without requiring external filesystem libraries.
 
 **Features:**
 - File Allocation Table (FAT) system
@@ -45,9 +45,9 @@ A self-contained simple filesystem implementation that works directly on QSPI fl
 
 ### 3. QSPIPartitioning.ino
 **Difficulty:** Intermediate
-**Dependencies:** None
+**Dependencies:** None (class implementation included in sketch)
 
-Demonstrates how to partition QSPI flash into logical regions for different purposes.
+Demonstrates partitioning QSPI flash into logical regions for different purposes.
 
 **Features:**
 - Multiple partition support (Config, Logging, User Files, Backup)
@@ -184,41 +184,35 @@ The Arduino-Zephyr build system should automatically pick up your `prj.conf`.
 
 ---
 
-## Common Operations
+## API Reference
 
-### Reading Flash Info
+### QSPI - Low-level flash operations
 ```cpp
 QSPI.begin();
-Serial.println(QSPI.getFlashSize());
-Serial.println(QSPI.getSectorSize());
-```
-
-### Raw Read/Write
-```cpp
-// Erase first
+QSPI.getFlashSize();
 QSPI.erase(address, size);
-
-// Write
 QSPI.write(address, data, size);
-
-// Read
 QSPI.read(address, buffer, size);
 ```
 
-### Using SimpleFS
+### QSPISimpleFS - Simple filesystem (implemented in QSPISimpleFS.ino)
 ```cpp
-SimpleFS fs;
-fs.begin() || fs.format();
-fs.createFile("test.txt", data, size);
-fs.readFile("test.txt", buffer, buffer_size);
-fs.listFiles();
+QSPISimpleFS.begin() || QSPISimpleFS.format();
+QSPISimpleFS.createFile("test.txt", data, size);
+QSPISimpleFS.readFile("test.txt", buffer, buffer_size);
+QSPISimpleFS.deleteFile("test.txt");
+QSPISimpleFS.listFiles();
+QSPISimpleFS.printStats();
 ```
 
-### Using Partitions
+### QSPIPartition - Partition management (implemented in QSPIPartitioning.ino)
 ```cpp
-PartitionManager::initialize();
-PartitionManager::writeToPartition(PARTITION_CONFIG, offset, data, size);
-PartitionManager::readFromPartition(PARTITION_CONFIG, offset, buffer, size);
+QSPIPartition.begin();
+QSPIPartition.definePartition(0, "CONFIG", start, size);
+QSPIPartition.write(partition_id, offset, data, size);
+QSPIPartition.read(partition_id, offset, buffer, size);
+QSPIPartition.erase(partition_id);
+QSPIPartition.printPartitionTable();
 ```
 
 ---

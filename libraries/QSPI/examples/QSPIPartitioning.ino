@@ -2,11 +2,7 @@
   QSPI Partitioning Example
 
   This example demonstrates how to partition QSPI flash memory into
-  logical regions for different purposes:
-  - Configuration storage
-  - Data logging
-  - User files
-  - Reserved/backup area
+  logical regions for different purposes.
 
   Features:
   - Define multiple partitions with different sizes
@@ -14,162 +10,243 @@
   - Partition boundary checking
   - Efficient partition management
 
+  Partitions created:
+  - CONFIG: Small partition for configuration (64KB)
+  - LOGGING: Medium partition for data logging (256KB)
+  - USER_FILES: Large partition for user files (remaining space - 128KB)
+  - BACKUP: Reserved backup partition (128KB)
+
   Note: QSPI flash must be configured in the board's device tree overlay.
 */
 
 #include <QSPI.h>
 
-// Partition definitions
-enum PartitionID {
-  PARTITION_CONFIG = 0,    // Small partition for configuration (64KB)
-  PARTITION_LOGGING,       // Medium partition for data logging (256KB)
-  PARTITION_USER_FILES,    // Large partition for user files (remaining space - 128KB)
-  PARTITION_BACKUP,        // Reserved backup partition (128KB)
-  PARTITION_COUNT
-};
+// Maximum number of partitions supported
+#define MAX_PARTITIONS 8
 
-struct Partition {
+// Partition definition
+struct PartitionInfo {
   const char* name;
   uint32_t start_address;
   uint32_t size;
 };
 
-// Partition table (will be initialized based on flash size)
-Partition partitions[PARTITION_COUNT];
+// Global partition state
+PartitionInfo partitions[MAX_PARTITIONS];
+uint8_t partition_count = 0;
+bool partition_initialized = false;
+uint32_t flash_size = 0;
+uint32_t sector_size = 0;
 
-// Helper class for partition management
-class PartitionManager {
-public:
-  static bool initialize() {
-    uint32_t flash_size = QSPI.getFlashSize();
-    uint32_t sector_size = QSPI.getSectorSize();
+// Forward declarations
+bool validatePartitions();
+bool isValidPartition(uint8_t partition_id);
+bool checkPartitionBoundaries(uint8_t partition_id, uint32_t offset, size_t size);
 
-    if (flash_size == 0) {
-      return false;
-    }
-
-    Serial.print("Initializing partition table for ");
-    Serial.print(flash_size / 1024);
-    Serial.println(" KB flash");
-
-    // Define partition layout
-    partitions[PARTITION_CONFIG] = {"CONFIG", 0, 64 * 1024};
-    partitions[PARTITION_LOGGING] = {"LOGGING", partitions[PARTITION_CONFIG].start_address + partitions[PARTITION_CONFIG].size, 256 * 1024};
-    partitions[PARTITION_BACKUP] = {"BACKUP", flash_size - 128 * 1024, 128 * 1024};
-    partitions[PARTITION_USER_FILES] = {
-      "USER_FILES",
-      partitions[PARTITION_LOGGING].start_address + partitions[PARTITION_LOGGING].size,
-      partitions[PARTITION_BACKUP].start_address - (partitions[PARTITION_LOGGING].start_address + partitions[PARTITION_LOGGING].size)
-    };
-
-    // Validate partitions
-    for (int i = 0; i < PARTITION_COUNT; i++) {
-      // Align to sector boundaries
-      if (partitions[i].start_address % sector_size != 0) {
-        Serial.print("Warning: Partition ");
-        Serial.print(partitions[i].name);
-        Serial.println(" is not sector-aligned!");
-      }
-
-      if (partitions[i].start_address + partitions[i].size > flash_size) {
-        Serial.print("Error: Partition ");
-        Serial.print(partitions[i].name);
-        Serial.println(" exceeds flash size!");
-        return false;
-      }
-    }
-
-    return true;
+// Initialize partition system
+bool initPartitions() {
+  if (!QSPI.isReady()) {
+    return false;
   }
 
-  static void printPartitionTable() {
-    Serial.println("\nPartition Table:");
-    Serial.println("================");
-    Serial.println("ID  Name          Start       Size        End");
-    Serial.println("--  ------------  ----------  ----------  ----------");
+  flash_size = QSPI.getFlashSize();
+  sector_size = QSPI.getSectorSize();
 
-    for (int i = 0; i < PARTITION_COUNT; i++) {
-      char line[80];
-      snprintf(line, sizeof(line), "%-2d  %-12s  0x%08X  0x%08X  0x%08X",
+  if (flash_size == 0 || sector_size == 0) {
+    return false;
+  }
+
+  partition_initialized = true;
+  return true;
+}
+
+// Define a new partition
+bool definePartition(uint8_t id, const char* name, uint32_t start_address, uint32_t size) {
+  if (!partition_initialized || id >= MAX_PARTITIONS) {
+    return false;
+  }
+
+  // Check if partition fits in flash
+  if (start_address + size > flash_size) {
+    return false;
+  }
+
+  // Warn if not sector-aligned
+  if (start_address % sector_size != 0 || size % sector_size != 0) {
+    Serial.print("Warning: Partition '");
+    Serial.print(name);
+    Serial.println("' is not sector-aligned!");
+  }
+
+  partitions[id].name = name;
+  partitions[id].start_address = start_address;
+  partitions[id].size = size;
+
+  if (id >= partition_count) {
+    partition_count = id + 1;
+  }
+
+  return validatePartitions();
+}
+
+// Write data to partition
+bool writePartition(uint8_t partition_id, uint32_t offset, const void* data, size_t size) {
+  if (!checkPartitionBoundaries(partition_id, offset, size)) {
+    return false;
+  }
+
+  uint32_t address = partitions[partition_id].start_address + offset;
+  return QSPI.write(address, data, size);
+}
+
+// Read data from partition
+bool readPartition(uint8_t partition_id, uint32_t offset, void* data, size_t size) {
+  if (!checkPartitionBoundaries(partition_id, offset, size)) {
+    return false;
+  }
+
+  uint32_t address = partitions[partition_id].start_address + offset;
+  return QSPI.read(address, data, size);
+}
+
+// Erase entire partition
+bool erasePartition(uint8_t partition_id) {
+  if (!isValidPartition(partition_id)) {
+    return false;
+  }
+
+  return QSPI.erase(partitions[partition_id].start_address, partitions[partition_id].size);
+}
+
+// Erase region within partition
+bool erasePartitionRegion(uint8_t partition_id, uint32_t offset, size_t size) {
+  if (!checkPartitionBoundaries(partition_id, offset, size)) {
+    return false;
+  }
+
+  uint32_t address = partitions[partition_id].start_address + offset;
+
+  // Align to sector boundary
+  uint32_t aligned_address = (address / sector_size) * sector_size;
+  uint32_t aligned_size = ((size + sector_size - 1) / sector_size) * sector_size;
+
+  return QSPI.erase(aligned_address, aligned_size);
+}
+
+// Get partition size
+uint32_t getPartitionSize(uint8_t partition_id) {
+  if (!isValidPartition(partition_id)) {
+    return 0;
+  }
+  return partitions[partition_id].size;
+}
+
+// Get partition start address
+uint32_t getPartitionStart(uint8_t partition_id) {
+  if (!isValidPartition(partition_id)) {
+    return 0;
+  }
+  return partitions[partition_id].start_address;
+}
+
+// Get partition name
+const char* getPartitionName(uint8_t partition_id) {
+  if (!isValidPartition(partition_id)) {
+    return "INVALID";
+  }
+  return partitions[partition_id].name;
+}
+
+// Check if partition is valid
+bool isValidPartition(uint8_t partition_id) {
+  return partition_initialized && partition_id < partition_count && partitions[partition_id].size > 0;
+}
+
+// Check partition boundaries
+bool checkPartitionBoundaries(uint8_t partition_id, uint32_t offset, size_t size) {
+  if (!isValidPartition(partition_id)) {
+    return false;
+  }
+
+  if (offset + size > partitions[partition_id].size) {
+    Serial.print("Error: Access exceeds partition '");
+    Serial.print(partitions[partition_id].name);
+    Serial.println("' boundary!");
+    return false;
+  }
+
+  return true;
+}
+
+// Display partition table
+void printPartitionTable() {
+  if (!partition_initialized) {
+    Serial.println("Partition table not initialized");
+    return;
+  }
+
+  Serial.println("\nPartition Table:");
+  Serial.println("================");
+  Serial.print("Flash Size: ");
+  Serial.print(flash_size / 1024);
+  Serial.println(" KB");
+  Serial.print("Sector Size: ");
+  Serial.print(sector_size);
+  Serial.println(" bytes\n");
+
+  Serial.println("ID  Name          Start       Size        End         Size(KB)");
+  Serial.println("--  ------------  ----------  ----------  ----------  --------");
+
+  for (uint8_t i = 0; i < partition_count; i++) {
+    if (partitions[i].size > 0) {
+      char line[100];
+      snprintf(line, sizeof(line), "%-2d  %-12s  0x%08X  0x%08X  0x%08X  %8u",
                i,
                partitions[i].name,
                partitions[i].start_address,
                partitions[i].size,
-               partitions[i].start_address + partitions[i].size);
+               partitions[i].start_address + partitions[i].size,
+               partitions[i].size / 1024);
       Serial.println(line);
     }
-    Serial.println();
+  }
+  Serial.println();
+}
+
+// Validate partitions don't overlap
+bool validatePartitions() {
+  for (uint8_t i = 0; i < partition_count; i++) {
+    if (partitions[i].size == 0) continue;
+
+    uint32_t i_end = partitions[i].start_address + partitions[i].size;
+
+    for (uint8_t j = i + 1; j < partition_count; j++) {
+      if (partitions[j].size == 0) continue;
+
+      uint32_t j_end = partitions[j].start_address + partitions[j].size;
+
+      // Check for overlap
+      if (!(i_end <= partitions[j].start_address || j_end <= partitions[i].start_address)) {
+        Serial.print("Error: Partitions '");
+        Serial.print(partitions[i].name);
+        Serial.print("' and '");
+        Serial.print(partitions[j].name);
+        Serial.println("' overlap!");
+        return false;
+      }
+    }
   }
 
-  static bool writeToPartition(PartitionID id, uint32_t offset, const void* data, size_t size) {
-    if (id >= PARTITION_COUNT) {
-      return false;
-    }
+  return true;
+}
 
-    uint32_t address = partitions[id].start_address + offset;
-
-    // Boundary check
-    if (offset + size > partitions[id].size) {
-      Serial.print("Error: Write exceeds partition ");
-      Serial.print(partitions[id].name);
-      Serial.println(" boundary!");
-      return false;
-    }
-
-    return QSPI.write(address, data, size);
-  }
-
-  static bool readFromPartition(PartitionID id, uint32_t offset, void* data, size_t size) {
-    if (id >= PARTITION_COUNT) {
-      return false;
-    }
-
-    uint32_t address = partitions[id].start_address + offset;
-
-    // Boundary check
-    if (offset + size > partitions[id].size) {
-      Serial.print("Error: Read exceeds partition ");
-      Serial.print(partitions[id].name);
-      Serial.println(" boundary!");
-      return false;
-    }
-
-    return QSPI.read(address, data, size);
-  }
-
-  static bool erasePartition(PartitionID id) {
-    if (id >= PARTITION_COUNT) {
-      return false;
-    }
-
-    Serial.print("Erasing partition ");
-    Serial.print(partitions[id].name);
-    Serial.print("... ");
-
-    bool result = QSPI.erase(partitions[id].start_address, partitions[id].size);
-
-    if (result) {
-      Serial.println("OK");
-    } else {
-      Serial.println("FAILED");
-    }
-
-    return result;
-  }
-
-  static uint32_t getPartitionSize(PartitionID id) {
-    if (id >= PARTITION_COUNT) {
-      return 0;
-    }
-    return partitions[id].size;
-  }
-
-  static const char* getPartitionName(PartitionID id) {
-    if (id >= PARTITION_COUNT) {
-      return "UNKNOWN";
-    }
-    return partitions[id].name;
-  }
+// Partition IDs
+enum PartitionID {
+  PARTITION_CONFIG = 0,
+  PARTITION_LOGGING,
+  PARTITION_USER_FILES,
+  PARTITION_BACKUP,
+  PARTITION_COUNT
 };
 
 void setup() {
@@ -197,16 +274,33 @@ void setup() {
   Serial.print(QSPI.getSectorSize());
   Serial.println(" bytes\n");
 
-  // Initialize partition table
-  if (!PartitionManager::initialize()) {
-    Serial.println("Failed to initialize partition table!");
+  // Initialize partition manager
+  if (!initPartitions()) {
+    Serial.println("Failed to initialize partition manager!");
     while (1) {
       delay(1000);
     }
   }
 
+  // Define partition layout
+  uint32_t total_flash_size = QSPI.getFlashSize();
+
+  // CONFIG partition at the start (64KB)
+  definePartition(PARTITION_CONFIG, "CONFIG", 0, 64 * 1024);
+
+  // LOGGING partition after CONFIG (256KB)
+  definePartition(PARTITION_LOGGING, "LOGGING", 64 * 1024, 256 * 1024);
+
+  // BACKUP partition at the end (128KB)
+  definePartition(PARTITION_BACKUP, "BACKUP", total_flash_size - 128 * 1024, 128 * 1024);
+
+  // USER_FILES partition in the middle (remaining space)
+  uint32_t user_start = 64 * 1024 + 256 * 1024;
+  uint32_t user_size = (total_flash_size - 128 * 1024) - user_start;
+  definePartition(PARTITION_USER_FILES, "USER_FILES", user_start, user_size);
+
   // Display partition table
-  PartitionManager::printPartitionTable();
+  printPartitionTable();
 
   // Test each partition
   testConfigPartition();
@@ -227,7 +321,13 @@ void testConfigPartition() {
   Serial.println("-------------------------");
 
   // Erase partition first
-  PartitionManager::erasePartition(PARTITION_CONFIG);
+  Serial.print("Erasing CONFIG partition... ");
+  if (erasePartition(PARTITION_CONFIG)) {
+    Serial.println("OK");
+  } else {
+    Serial.println("FAILED");
+    return;
+  }
 
   // Simulate storing configuration data
   struct Config {
@@ -245,7 +345,7 @@ void testConfigPartition() {
   config.checksum = 0xDEADBEEF;
 
   Serial.print("Writing config... ");
-  if (PartitionManager::writeToPartition(PARTITION_CONFIG, 0, &config, sizeof(config))) {
+  if (writePartition(PARTITION_CONFIG, 0, &config, sizeof(config))) {
     Serial.println("OK");
   } else {
     Serial.println("FAILED");
@@ -255,7 +355,7 @@ void testConfigPartition() {
   // Read back and verify
   Config read_config;
   Serial.print("Reading config... ");
-  if (PartitionManager::readFromPartition(PARTITION_CONFIG, 0, &read_config, sizeof(read_config))) {
+  if (readPartition(PARTITION_CONFIG, 0, &read_config, sizeof(read_config))) {
     Serial.println("OK");
 
     Serial.print("  Magic: 0x");
@@ -284,7 +384,13 @@ void testLoggingPartition() {
   Serial.println("--------------------------");
 
   // Erase partition first
-  PartitionManager::erasePartition(PARTITION_LOGGING);
+  Serial.print("Erasing LOGGING partition... ");
+  if (erasePartition(PARTITION_LOGGING)) {
+    Serial.println("OK");
+  } else {
+    Serial.println("FAILED");
+    return;
+  }
 
   // Simulate logging sensor data
   struct LogEntry {
@@ -308,7 +414,7 @@ void testLoggingPartition() {
   Serial.print("Writing ");
   Serial.print(num_entries);
   Serial.print(" log entries... ");
-  if (PartitionManager::writeToPartition(PARTITION_LOGGING, 0, logs, sizeof(logs))) {
+  if (writePartition(PARTITION_LOGGING, 0, logs, sizeof(logs))) {
     Serial.println("OK");
   } else {
     Serial.println("FAILED");
@@ -318,7 +424,7 @@ void testLoggingPartition() {
   // Read back
   LogEntry read_logs[num_entries];
   Serial.print("Reading log entries... ");
-  if (PartitionManager::readFromPartition(PARTITION_LOGGING, 0, read_logs, sizeof(read_logs))) {
+  if (readPartition(PARTITION_LOGGING, 0, read_logs, sizeof(read_logs))) {
     Serial.println("OK");
 
     Serial.println("  Log entries:");
@@ -343,19 +449,18 @@ void testUserFilesPartition() {
   Serial.println("Testing USER_FILES Partition:");
   Serial.println("-----------------------------");
 
-  // Don't erase - just show we can write to different offsets
   const char* file1 = "This is user file 1 data";
   const char* file2 = "User file 2 contains different content";
 
   Serial.print("Writing file 1 at offset 0... ");
-  if (PartitionManager::writeToPartition(PARTITION_USER_FILES, 0, file1, strlen(file1) + 1)) {
+  if (writePartition(PARTITION_USER_FILES, 0, file1, strlen(file1) + 1)) {
     Serial.println("OK");
   } else {
     Serial.println("FAILED");
   }
 
   Serial.print("Writing file 2 at offset 4KB... ");
-  if (PartitionManager::writeToPartition(PARTITION_USER_FILES, 4096, file2, strlen(file2) + 1)) {
+  if (writePartition(PARTITION_USER_FILES, 4096, file2, strlen(file2) + 1)) {
     Serial.println("OK");
   } else {
     Serial.println("FAILED");
@@ -364,7 +469,7 @@ void testUserFilesPartition() {
   // Read back
   char buffer[64];
   Serial.print("Reading file 1... ");
-  if (PartitionManager::readFromPartition(PARTITION_USER_FILES, 0, buffer, sizeof(buffer))) {
+  if (readPartition(PARTITION_USER_FILES, 0, buffer, sizeof(buffer))) {
     Serial.println("OK");
     Serial.print("  Content: ");
     Serial.println(buffer);
@@ -373,7 +478,7 @@ void testUserFilesPartition() {
   }
 
   Serial.print("Reading file 2... ");
-  if (PartitionManager::readFromPartition(PARTITION_USER_FILES, 4096, buffer, sizeof(buffer))) {
+  if (readPartition(PARTITION_USER_FILES, 4096, buffer, sizeof(buffer))) {
     Serial.println("OK");
     Serial.print("  Content: ");
     Serial.println(buffer);
@@ -389,12 +494,18 @@ void testBackupPartition() {
   Serial.println("-------------------------");
 
   // Erase partition first
-  PartitionManager::erasePartition(PARTITION_BACKUP);
+  Serial.print("Erasing BACKUP partition... ");
+  if (erasePartition(PARTITION_BACKUP)) {
+    Serial.println("OK");
+  } else {
+    Serial.println("FAILED");
+    return;
+  }
 
   const char* backup_data = "Critical backup data that should be preserved!";
 
   Serial.print("Writing backup data... ");
-  if (PartitionManager::writeToPartition(PARTITION_BACKUP, 0, backup_data, strlen(backup_data) + 1)) {
+  if (writePartition(PARTITION_BACKUP, 0, backup_data, strlen(backup_data) + 1)) {
     Serial.println("OK");
   } else {
     Serial.println("FAILED");
@@ -403,7 +514,7 @@ void testBackupPartition() {
 
   char buffer[64];
   Serial.print("Reading backup data... ");
-  if (PartitionManager::readFromPartition(PARTITION_BACKUP, 0, buffer, sizeof(buffer))) {
+  if (readPartition(PARTITION_BACKUP, 0, buffer, sizeof(buffer))) {
     Serial.println("OK");
     Serial.print("  Content: ");
     Serial.println(buffer);

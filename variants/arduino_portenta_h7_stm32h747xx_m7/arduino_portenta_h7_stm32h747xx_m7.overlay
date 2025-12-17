@@ -396,3 +396,6 @@ qspi_flash: &mx25l12833f {};
  * with the correct pins: IO2=PF7, IO3=PD13 (different from Giga R1!)
  */
 qspi_flash: &mx25l12833f {};
+
+/* Include common flash filesystem configuration */
+#include "../common/arduino_flash_fs.dtsi"
